@@ -1,10 +1,6 @@
 """Utilities for constructing mixing matrices used by the M-layer transformation."""
 from __future__ import annotations
 
-from dataclasses import dataclass
-from enum import Enum
-from typing import Any, Dict
-
 import numpy as np
 
 from .mixing_kernels import (
@@ -14,82 +10,51 @@ from .mixing_kernels import (
 )
 
 
-class MixingMatrixBackend(str, Enum):
-    """Enumerates the supported ways of generating the mixing matrix."""
+class MixingMatrix:
+    """Callable helper for constructing mixing matrices.
 
-    MLAYER_BLOCK = "mlayer_block"
-    LIB_BLOCK = "lib_block"
-    MLAYER_STEP = "mlayer_step"
-    LIB_STEP = "lib_step"
-    MLAYER_DIRECTIONAL = "mlayer_directional"
+    Parameters are fixed at construction time and the instance can then be
+    reused to generate matrices for different ``M`` or ``sigma`` values.
+    """
 
+    def __init__(
+        self,
+        backend: str,
+        *,
+        L: int = 2,
+        mtype: str = "block",
+        shift: float = 0.0,
+        skew: float = 0.0,
+    ) -> None:
+        self.backend = backend
+        self.L = L
+        self.mtype = mtype
+        self.shift = shift
+        self.skew = skew
 
-@dataclass
-class MixingMatrixRequest:
-    """Lightweight configuration bundle for :class:`MixingMatrixFactory`."""
+    def __call__(self, M: int, sigma: float, index: int) -> np.ndarray:
+        """Return the dense mixing matrix for the configured backend."""
 
-    backend: MixingMatrixBackend
-    M: int
-    sigma: float
-    index: int
-    L: int = 2
-    mtype: str = "block"
-    shift: float = 0.0
-    skew: float = 0.0
-
-    def as_kwargs(self) -> Dict[str, Any]:
-        return {
-            "backend": self.backend,
-            "M": self.M,
-            "sigma": self.sigma,
-            "index": self.index,
-            "L": self.L,
-            "mtype": self.mtype,
-            "shift": self.shift,
-            "skew": self.skew,
-        }
-
-
-class MixingMatrixFactory:
-    """Factory creating mixing matrices compatible with the legacy pipeline."""
-
-    def create(self, request: MixingMatrixRequest) -> np.ndarray:
-        """Return the dense mixing matrix associated with *request*."""
-
-        backend = request.backend
-        sigma = request.sigma
-        if backend is MixingMatrixBackend.MLAYER_BLOCK:
+        backend = self.backend
+        if backend in {"mlayer_block", "lib_block"}:
             return create_mixing_q(
-                request.M,
-                mtype=request.mtype,
+                M,
+                mtype=self.mtype,
                 sigma=sigma * 20.0,
-                L=request.L,
+                L=self.L,
             )
-        if backend is MixingMatrixBackend.LIB_BLOCK:
-            return create_mixing_q(
-                request.M,
-                mtype=request.mtype,
-                sigma=sigma * 20.0,
-                L=request.L,
-            )
-        if backend is MixingMatrixBackend.MLAYER_STEP:
-            return create_mixing_q_step(request.M, request.index + 1)
-        if backend is MixingMatrixBackend.LIB_STEP:
-            return create_mixing_q_step(request.M, request.index + 1)
-        if backend is MixingMatrixBackend.MLAYER_DIRECTIONAL:
+        if backend in {"mlayer_step", "lib_step"}:
+            return create_mixing_q_step(M, index + 1)
+        if backend == "mlayer_directional":
             return create_mixing_q_directional(
-                request.M,
-                mtype=request.mtype,
+                M,
+                mtype=self.mtype,
                 sigma=sigma * 20.0,
-                L=request.L,
-                shift=request.shift,
-                skew=request.skew,
+                L=self.L,
+                shift=self.shift,
+                skew=self.skew,
             )
         raise ValueError(f"Unsupported mixing backend: {backend}")
 
 
-__all__ = [
-    "MixingMatrixBackend",
-    "MixingMatrixFactory",
-    "MixingMatrixRequest",
-]
+__all__ = ["MixingMatrix"]

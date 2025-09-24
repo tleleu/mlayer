@@ -14,11 +14,7 @@ if __package__ in {None, ""}:
     # sure the repository root (parent of ``benchmark``) is importable.
     sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from benchmark.mixing import (
-    MixingMatrixBackend,
-    MixingMatrixFactory,
-    MixingMatrixRequest,
-)
+from benchmark.mixing import MixingMatrix
 from benchmark.mlayer_transform import MLayerConstructor, create_mlayer_constructor
 from benchmark.observables import ObservableEvaluator
 from benchmark.plotting import BenchmarkPlotter, PlotConfig
@@ -42,7 +38,7 @@ class BenchmarkConfig:
     beta: float = 1_000.0
     typeperm: str = "asym"
     mlayer_backend: str = "permanental"
-    mixing_backend: MixingMatrixBackend = MixingMatrixBackend.MLAYER_DIRECTIONAL
+    mixing_backend: str = "mlayer_directional"
     shift: float = 0.0
     skew: float = 0.2
     seed0: int = 42
@@ -54,45 +50,32 @@ class BenchmarkDefinition:
     """Holds the constructors required to assemble a benchmark run."""
 
     problem_constructor: Callable[["BenchmarkConfig"], IsingProblem]
-    mixing_constructor: Callable[["BenchmarkConfig"], MixingMatrixFactory]
+    mixing_constructor: Callable[["BenchmarkConfig"], MixingMatrix]
     mlayer_constructor: Callable[["BenchmarkConfig"], MLayerConstructor]
     observable_constructor: Callable[["BenchmarkConfig"], ObservableEvaluator]
     solver_constructor: Callable[["BenchmarkConfig"], SimulatedAnnealingRunner]
 
 
-def _bethe_problem_constructor(config: BenchmarkConfig) -> IsingProblem:
-    return BetheProblem(config.N0, degree=2)
-
-
-def _mixing_constructor(_: BenchmarkConfig) -> MixingMatrixFactory:
-    return MixingMatrixFactory()
-
-
-def _mlayer_constructor(config: BenchmarkConfig) -> MLayerConstructor:
-    return create_mlayer_constructor(config.mlayer_backend)
-
-
-def _observable_constructor(_: BenchmarkConfig) -> ObservableEvaluator:
-    return ObservableEvaluator()
-
-
-def _solver_constructor(config: BenchmarkConfig) -> SimulatedAnnealingRunner:
-    return SimulatedAnnealingRunner(
-        SimulatedAnnealingConfig(
-            steps=config.steps0,
-            K=config.K,
-            beta=config.beta,
-        )
-    )
-
-
 BENCHMARK_DEFINITIONS: Dict[str, BenchmarkDefinition] = {
     "bethe": BenchmarkDefinition(
-        problem_constructor=_bethe_problem_constructor,
-        mixing_constructor=_mixing_constructor,
-        mlayer_constructor=_mlayer_constructor,
-        observable_constructor=_observable_constructor,
-        solver_constructor=_solver_constructor,
+        problem_constructor=lambda config: BetheProblem(config.N0, degree=2),
+        mixing_constructor=lambda config: MixingMatrix(
+            config.mixing_backend,
+            L=config.L,
+            shift=config.shift,
+            skew=config.skew,
+        ),
+        mlayer_constructor=lambda config: create_mlayer_constructor(
+            config.mlayer_backend
+        ),
+        observable_constructor=lambda _: ObservableEvaluator(),
+        solver_constructor=lambda config: SimulatedAnnealingRunner(
+            SimulatedAnnealingConfig(
+                steps=config.steps0,
+                K=config.K,
+                beta=config.beta,
+            )
+        ),
     )
 }
 
@@ -108,7 +91,7 @@ class BenchmarkRunner:
             raise ValueError(f"Unknown benchmark problem '{config.problem}'") from exc
 
         self.problem_constructor = self.definition.problem_constructor
-        self.mixing_factory = self.definition.mixing_constructor(config)
+        self.mixing_matrix = self.definition.mixing_constructor(config)
         self.mlayer_transform = self.definition.mlayer_constructor(config)
         self.observable = self.definition.observable_constructor(config)
         self.solver = self.definition.solver_constructor(config)
@@ -132,16 +115,7 @@ class BenchmarkRunner:
                 seed_base = int(cfg.seed0 + 10_000 * r + 1_000 * iM)
 
                 for i_sigma, sigma in enumerate(SigmaL):
-                    mixing_request = MixingMatrixRequest(
-                        backend=cfg.mixing_backend,
-                        M=int(M),
-                        sigma=float(sigma),
-                        index=i_sigma,
-                        L=cfg.L,
-                        shift=cfg.shift,
-                        skew=cfg.skew,
-                    )
-                    Q = self.mixing_factory.create(mixing_request)
+                    Q = self.mixing_matrix(int(M), float(sigma), i_sigma)
 
                     J = self.mlayer_transform(J0_dense, int(M), Q, cfg.typeperm)
 
