@@ -1,12 +1,18 @@
 """Reference benchmark driver using the modular components."""
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, Sequence
 
 import numpy as np
 from tqdm import tqdm
+
+if __package__ in {None, ""}:
+    # Allow running the module directly as ``python benchmark/runner.py`` by making
+    # sure the repository root (parent of ``benchmark``) is importable.
+    sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from benchmark.mixing import (
     MixingMatrixBackend,
@@ -180,3 +186,14 @@ class BenchmarkRunner:
 
 
 __all__ = ["BenchmarkRunner", "BenchmarkConfig", "BenchmarkDefinition"]
+
+
+def main() -> None:
+    """Run the benchmark with the default configuration."""
+
+    runner = BenchmarkRunner(BenchmarkConfig())
+    runner.run()
+
+
+if __name__ == "__main__":
+    main()
