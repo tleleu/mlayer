@@ -8,12 +8,19 @@ from typing import Callable, Dict, Sequence
 import numpy as np
 from tqdm import tqdm
 
-from .mixing import MixingMatrixBackend, MixingMatrixFactory, MixingMatrixRequest
-from .mlayer_transform import MLayerConstructor, create_mlayer_constructor
-from .observables import ObservableEvaluator
-from .plotting import BenchmarkPlotter, PlotConfig
-from .problems import BetheProblem, IsingProblem
-from .algorithms.simulated_annealing import SimulatedAnnealingConfig, SimulatedAnnealingRunner
+from benchmark.mixing import (
+    MixingMatrixBackend,
+    MixingMatrixFactory,
+    MixingMatrixRequest,
+)
+from benchmark.mlayer_transform import MLayerConstructor, create_mlayer_constructor
+from benchmark.observables import ObservableEvaluator
+from benchmark.plotting import BenchmarkPlotter, PlotConfig
+from benchmark.problems import BetheProblem, IsingProblem
+from benchmark.algorithms.simulated_annealing import (
+    SimulatedAnnealingConfig,
+    SimulatedAnnealingRunner,
+)
 
 
 @dataclass
