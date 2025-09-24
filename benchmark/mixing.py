@@ -3,33 +3,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
 from typing import Any, Dict
 
 import numpy as np
 
-# ---------------------------------------------------------------------------
-# Third party / project specific imports
-# ---------------------------------------------------------------------------
-# The legacy implementation keeps the helpers inside ``MCMC`` which lives next
-# to this ``benchmark`` package.  We make the modules discoverable explicitly so
-# that the new structure can be imported without relying on side effects.
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-LEGACY_MCMC = PROJECT_ROOT / "MCMC"
-LEGACY_MCMC_NEAL = PROJECT_ROOT / "MCMC_neal"
-
-import sys
-
-for path in (LEGACY_MCMC, LEGACY_MCMC_NEAL):
-    if str(path) not in sys.path:
-        sys.path.insert(0, str(path))
-
-from mlayer2 import (  # type: ignore  # legacy module
-    create_mixing_Q,
-    create_mixing_Q_step,
-    create_mixing_Q_dir,
+from .mixing_kernels import (
+    create_mixing_q,
+    create_mixing_q_directional,
+    create_mixing_q_step,
 )
-import lib  # type: ignore  # legacy module
 
 
 class MixingMatrixBackend(str, Enum):
@@ -77,25 +59,25 @@ class MixingMatrixFactory:
         backend = request.backend
         sigma = request.sigma
         if backend is MixingMatrixBackend.MLAYER_BLOCK:
-            return create_mixing_Q(
+            return create_mixing_q(
                 request.M,
                 mtype=request.mtype,
                 sigma=sigma * 20.0,
                 L=request.L,
             )
         if backend is MixingMatrixBackend.LIB_BLOCK:
-            return lib.create_mixing_Q(
+            return create_mixing_q(
                 request.M,
                 mtype=request.mtype,
                 sigma=sigma * 20.0,
                 L=request.L,
             )
         if backend is MixingMatrixBackend.MLAYER_STEP:
-            return create_mixing_Q_step(request.M, request.index + 1)
+            return create_mixing_q_step(request.M, request.index + 1)
         if backend is MixingMatrixBackend.LIB_STEP:
-            return lib.create_mixing_Q_step(request.M, request.index + 1)
+            return create_mixing_q_step(request.M, request.index + 1)
         if backend is MixingMatrixBackend.MLAYER_DIRECTIONAL:
-            return create_mixing_Q_dir(
+            return create_mixing_q_directional(
                 request.M,
                 mtype=request.mtype,
                 sigma=sigma * 20.0,
