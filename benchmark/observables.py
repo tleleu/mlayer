@@ -2,20 +2,52 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Tuple
 
 import numpy as np
 
-import sys
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-LEGACY_MCMC_NEAL = PROJECT_ROOT / "MCMC_neal"
+def _calculate_energy(spins: np.ndarray, J: np.ndarray) -> np.ndarray:
+    """Return the energy of each configuration in ``spins``.
 
-if str(LEGACY_MCMC_NEAL) not in sys.path:
-    sys.path.insert(0, str(LEGACY_MCMC_NEAL))
+    Parameters
+    ----------
+    spins:
+        Array with shape ``(K, N)`` containing ``K`` spin configurations of
+        ``N`` spins each.
+    J:
+        Dense interaction matrix with shape ``(N, N)``.
+    """
 
-import stats  # type: ignore  # legacy helper
+    spins_float = spins.astype(float)
+    interaction = np.matmul(spins_float, J)
+    return -0.5 * np.sum(spins_float * interaction, axis=1)
+
+
+def _calculate_energy_replicas(
+    final_spins: np.ndarray, J: np.ndarray, M: int
+) -> np.ndarray:
+    """Energy per spin for ``M`` replicas of each configuration.
+
+    Parameters
+    ----------
+    final_spins:
+        Array of shape ``(K, M * N)`` storing ``K`` configurations, each with
+        ``M`` replicas of ``N`` spins.
+    J:
+        Dense interaction matrix with shape ``(N, N)``.
+    M:
+        Number of replicas encoded in ``final_spins``.
+    """
+
+    K = final_spins.shape[0]
+    N = J.shape[0]
+    spins_reshaped = final_spins.reshape(K, M, N)
+
+    energies = np.empty((K, M))
+    for m in range(M):
+        energies[:, m] = _calculate_energy(spins_reshaped[:, m, :], J)
+
+    return energies / N
 
 
 @dataclass
@@ -29,7 +61,7 @@ class ObservableEvaluator:
     """Translate spin configurations into scalar observables."""
 
     def compute(self, spins: np.ndarray, J0_dense: np.ndarray, M: int) -> EnergyObservables:
-        energy = stats.calculate_energy_replicas(spins, J0_dense, M)
+        energy = _calculate_energy_replicas(spins, J0_dense, M)
         e_mean = float(np.mean(energy))
         e_min = float(np.min(energy))
 
