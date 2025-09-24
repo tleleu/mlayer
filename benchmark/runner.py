@@ -81,7 +81,6 @@ BENCHMARK_DEFINITIONS: Dict[str, BenchmarkDefinition] = {
 
 
 class BenchmarkRunner:
-    """Coordinates the pieces required to reproduce ``energy2.py``."""
 
     def __init__(self, config: BenchmarkConfig) -> None:
         self.config = config
