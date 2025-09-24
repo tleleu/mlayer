@@ -3,22 +3,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Sequence
+from typing import Callable, Dict, Sequence
 
 import numpy as np
 from tqdm import tqdm
 
 from .mixing import MixingMatrixBackend, MixingMatrixFactory, MixingMatrixRequest
-from .mlayer_transform import MLayerTransformRequest, MLayerTransformer
+from .mlayer_transform import MLayerConstructor, create_mlayer_constructor
 from .observables import ObservableEvaluator
 from .plotting import BenchmarkPlotter, PlotConfig
-from .problems.bethe import BetheProblem
+from .problems import BetheProblem, IsingProblem
 from .algorithms.simulated_annealing import SimulatedAnnealingConfig, SimulatedAnnealingRunner
 
 
 @dataclass
 class BenchmarkConfig:
     N0: int = 100
+    problem: str = "bethe"
     L: int = 2
     Ml: Sequence[int] = (20, 40, 100)
     SigmaL: Sequence[float] = tuple(np.linspace(0.01, 0.10, 10))
@@ -27,7 +28,7 @@ class BenchmarkConfig:
     steps0: int = 200
     beta: float = 1_000.0
     typeperm: str = "asym"
-    mlayer_backend: str = "mlayer2"
+    mlayer_backend: str = "permanental"
     mixing_backend: MixingMatrixBackend = MixingMatrixBackend.MLAYER_DIRECTIONAL
     shift: float = 0.0
     skew: float = 0.2
@@ -35,14 +36,69 @@ class BenchmarkConfig:
     parallel: bool = False
 
 
+@dataclass
+class BenchmarkDefinition:
+    """Holds the constructors required to assemble a benchmark run."""
+
+    problem_constructor: Callable[["BenchmarkConfig"], IsingProblem]
+    mixing_constructor: Callable[["BenchmarkConfig"], MixingMatrixFactory]
+    mlayer_constructor: Callable[["BenchmarkConfig"], MLayerConstructor]
+    observable_constructor: Callable[["BenchmarkConfig"], ObservableEvaluator]
+    solver_constructor: Callable[["BenchmarkConfig"], SimulatedAnnealingRunner]
+
+
+def _bethe_problem_constructor(config: BenchmarkConfig) -> IsingProblem:
+    return BetheProblem(config.N0, degree=config.L - 1)
+
+
+def _mixing_constructor(_: BenchmarkConfig) -> MixingMatrixFactory:
+    return MixingMatrixFactory()
+
+
+def _mlayer_constructor(config: BenchmarkConfig) -> MLayerConstructor:
+    return create_mlayer_constructor(config.mlayer_backend)
+
+
+def _observable_constructor(_: BenchmarkConfig) -> ObservableEvaluator:
+    return ObservableEvaluator()
+
+
+def _solver_constructor(config: BenchmarkConfig) -> SimulatedAnnealingRunner:
+    return SimulatedAnnealingRunner(
+        SimulatedAnnealingConfig(
+            steps=config.steps0,
+            K=config.K,
+            beta=config.beta,
+        )
+    )
+
+
+BENCHMARK_DEFINITIONS: Dict[str, BenchmarkDefinition] = {
+    "bethe": BenchmarkDefinition(
+        problem_constructor=_bethe_problem_constructor,
+        mixing_constructor=_mixing_constructor,
+        mlayer_constructor=_mlayer_constructor,
+        observable_constructor=_observable_constructor,
+        solver_constructor=_solver_constructor,
+    )
+}
+
+
 class BenchmarkRunner:
     """Coordinates the pieces required to reproduce ``energy2.py``."""
 
     def __init__(self, config: BenchmarkConfig) -> None:
         self.config = config
-        self.mixing_factory = MixingMatrixFactory()
-        self.transformer = MLayerTransformer()
-        self.observable = ObservableEvaluator()
+        try:
+            self.definition = BENCHMARK_DEFINITIONS[config.problem.lower()]
+        except KeyError as exc:
+            raise ValueError(f"Unknown benchmark problem '{config.problem}'") from exc
+
+        self.problem_constructor = self.definition.problem_constructor
+        self.mixing_factory = self.definition.mixing_constructor(config)
+        self.mlayer_transform = self.definition.mlayer_constructor(config)
+        self.observable = self.definition.observable_constructor(config)
+        self.solver = self.definition.solver_constructor(config)
 
     def run(self) -> None:
         cfg = self.config
@@ -52,16 +108,10 @@ class BenchmarkRunner:
         Emean = np.zeros((len(SigmaL), len(Ml), cfg.reps))
         Qavg = np.zeros_like(Emean)
 
-        sa = SimulatedAnnealingRunner(
-            SimulatedAnnealingConfig(
-                steps=cfg.steps0,
-                K=cfg.K,
-                beta=cfg.beta,
-            )
-        )
+        sa = self.solver
 
         for r in range(cfg.reps):
-            problem = BetheProblem(cfg.N0, degree=cfg.L - 1)
+            problem = self.problem_constructor(cfg)
             J0_dense = problem.build_dense()
             e0_r = np.inf
 
@@ -80,14 +130,7 @@ class BenchmarkRunner:
                     )
                     Q = self.mixing_factory.create(mixing_request)
 
-                    transform_request = MLayerTransformRequest(
-                        J0_dense=J0_dense,
-                        M=int(M),
-                        mixing_matrix=Q,
-                        typeperm=cfg.typeperm,
-                        backend=cfg.mlayer_backend,
-                    )
-                    J = self.transformer.transform(transform_request)
+                    J = self.mlayer_transform(J0_dense, int(M), Q, cfg.typeperm)
 
                     spins = sa.run(
                         J,
@@ -129,4 +172,4 @@ class BenchmarkRunner:
         plotter.plot_min_residual(Ml, mean_res, ci95_res, SigmaL)
 
 
-__all__ = ["BenchmarkRunner", "BenchmarkConfig"]
+__all__ = ["BenchmarkRunner", "BenchmarkConfig", "BenchmarkDefinition"]
