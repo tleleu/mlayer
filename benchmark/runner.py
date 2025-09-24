@@ -35,7 +35,7 @@ class BenchmarkConfig:
     problem: str = "bethe"
     L: int = 2
     Ml: Sequence[int] = (20, 40, 100)
-    SigmaL: Sequence[float] = tuple(np.linspace(0.01, 0.10, 10))
+    SigmaL: Sequence[float] = tuple(np.linspace(0.01, 1.00, 10))
     reps: int = 1
     K: int = 50
     steps0: int = 200
@@ -61,7 +61,7 @@ class BenchmarkDefinition:
 
 
 def _bethe_problem_constructor(config: BenchmarkConfig) -> IsingProblem:
-    return BetheProblem(config.N0, degree=config.L - 1)
+    return BetheProblem(config.N0, degree=2)
 
 
 def _mixing_constructor(_: BenchmarkConfig) -> MixingMatrixFactory:
