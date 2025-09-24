@@ -1,6 +1,7 @@
 """Reference benchmark driver using the modular components."""
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, Sequence
@@ -8,12 +9,24 @@ from typing import Callable, Dict, Sequence
 import numpy as np
 from tqdm import tqdm
 
-from .mixing import MixingMatrixBackend, MixingMatrixFactory, MixingMatrixRequest
-from .mlayer_transform import MLayerConstructor, create_mlayer_constructor
-from .observables import ObservableEvaluator
-from .plotting import BenchmarkPlotter, PlotConfig
-from .problems import BetheProblem, IsingProblem
-from .algorithms.simulated_annealing import SimulatedAnnealingConfig, SimulatedAnnealingRunner
+if __package__ in {None, ""}:
+    # Allow running the module directly as ``python benchmark/runner.py`` by making
+    # sure the repository root (parent of ``benchmark``) is importable.
+    sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+from benchmark.mixing import (
+    MixingMatrixBackend,
+    MixingMatrixFactory,
+    MixingMatrixRequest,
+)
+from benchmark.mlayer_transform import MLayerConstructor, create_mlayer_constructor
+from benchmark.observables import ObservableEvaluator
+from benchmark.plotting import BenchmarkPlotter, PlotConfig
+from benchmark.problems import BetheProblem, IsingProblem
+from benchmark.algorithms.simulated_annealing import (
+    SimulatedAnnealingConfig,
+    SimulatedAnnealingRunner,
+)
 
 
 @dataclass
@@ -173,3 +186,14 @@ class BenchmarkRunner:
 
 
 __all__ = ["BenchmarkRunner", "BenchmarkConfig", "BenchmarkDefinition"]
+
+
+def main() -> None:
+    """Run the benchmark with the default configuration."""
+
+    runner = BenchmarkRunner(BenchmarkConfig())
+    runner.run()
+
+
+if __name__ == "__main__":
+    main()
