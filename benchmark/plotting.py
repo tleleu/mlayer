@@ -51,14 +51,14 @@ class BenchmarkPlotter:
         plt.title("a")
         if self.config.show_gap:
             plt.xscale("log")
-            plt.xlabel(r'spectral gap 1-$\\lambda_2$')
+            plt.xlabel(r'spectral gap 1-$\lambda_2$')
         else:
             plt.xlabel(r'$d$')
         if self.config.show_residual:
-            plt.ylabel(r'residual energy $\\langle e-e_0\\rangle$')
+            plt.ylabel(r'residual energy $\langle e-e_0\rangle$')
             plt.yscale('log')
         else:
-            plt.ylabel(r'energy $\\langle e\\rangle$')
+            plt.ylabel(r'energy $\langle e\rangle$')
             plt.ylim(-1.3, -0.7)
         plt.grid(True, ls=':')
         plt.legend()
@@ -76,10 +76,10 @@ class BenchmarkPlotter:
             )
         if self.config.show_gap:
             plt.yscale('log')
-            plt.xlabel(r'spectral gap 1-$\\lambda_2$')
+            plt.xlabel(r'spectral gap 1-$\lambda_2$')
         else:
             plt.xlabel(r'$d$')
-        plt.ylabel(r'inter-layer overlap $\\langle q_{\\mathrm{avg}}\\rangle$')
+        plt.ylabel(r'inter-layer overlap $\langle q_{\mathrm{avg}}\rangle$')
         plt.ylim(0, 1.02)
         plt.title('b')
         plt.grid(True, ls=':')
@@ -111,7 +111,7 @@ class BenchmarkPlotter:
         plt.xscale('log')
         plt.yscale('log')
         plt.xlabel('M')
-        plt.ylabel(r'$\\min_{\\sigma}\\ \\langle e-e_0\\rangle$')
+        plt.ylabel(r'$min_{\sigma} \langle e-e_0\rangle$')
         plt.title('Minimum residual vs M')
         plt.grid(True, which='both', ls=':')
 
