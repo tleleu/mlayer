@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Sequence
+from typing import Callable, Dict, Optional, Sequence
 
 import numpy as np
 from tqdm import tqdm
@@ -45,6 +46,7 @@ class BenchmarkConfig:
     skew: float = 0.0
     seed0: int = 42
     parallel: bool = False
+    parallel_workers: Optional[int] = None
 
 
 @dataclass
@@ -115,7 +117,8 @@ class BenchmarkRunner:
             for iM, M in enumerate(tqdm(Ml, desc="M sweep")):
                 seed_base = int(cfg.seed0 + 10_000 * r + 1_000 * iM)
 
-                for i_sigma, sigma in enumerate(sigmal):
+                def evaluate_sigma(item: tuple[int, float]) -> tuple[int, float, float, float]:
+                    i_sigma, sigma = item
                     Q = self.mixing_matrix(int(M), float(sigma), i_sigma)
 
                     J = self.mlayer_transform(J0_dense, int(M), Q, cfg.typeperm)
@@ -127,10 +130,25 @@ class BenchmarkRunner:
                     )
                     observables = self.observable.compute(spins, J0_dense, int(M))
 
-                    Emean[i_sigma, iM, r] = observables.energy_mean
-                    Qavg[i_sigma, iM, r] = observables.q_average
-                    if observables.energy_min < e0_r:
-                        e0_r = observables.energy_min
+                    return (
+                        i_sigma,
+                        observables.energy_mean,
+                        observables.q_average,
+                        observables.energy_min,
+                    )
+
+                sigma_iter = list(enumerate(sigmal))
+                if cfg.parallel:
+                    with ThreadPoolExecutor(max_workers=cfg.parallel_workers) as executor:
+                        results = list(executor.map(evaluate_sigma, sigma_iter))
+                else:
+                    results = [evaluate_sigma(item) for item in sigma_iter]
+
+                for i_sigma, energy_mean, q_average, energy_min in results:
+                    Emean[i_sigma, iM, r] = energy_mean
+                    Qavg[i_sigma, iM, r] = q_average
+                    if energy_min < e0_r:
+                        e0_r = energy_min
 
             Emean[:, :, r] -= e0_r
 
