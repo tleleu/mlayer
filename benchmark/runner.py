@@ -32,7 +32,7 @@ class BenchmarkConfig:
     problem: str = "bethe"
     L: int = 2
     Ml: Sequence[int] = (20, 40, 100)
-    sigmal: Sequence[float] = tuple(np.linspace(0.01, 1.00, 10))
+    sigmal: Sequence[float] = tuple(np.linspace(0.01, 0.3, 10))
     reps: int = 1
     K: int = 50
     steps0: int = 200
