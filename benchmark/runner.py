@@ -47,6 +47,8 @@ class BenchmarkConfig:
     seed0: int = 42
     parallel: bool = False
     parallel_workers: Optional[int] = None
+    sa_backend: str = "neal"
+    sa_zero_temp_terminate: bool = True
 
 
 @dataclass
@@ -78,6 +80,8 @@ BENCHMARK_DEFINITIONS: Dict[str, BenchmarkDefinition] = {
                 steps=config.steps0,
                 K=config.K,
                 beta=config.beta,
+                code=config.sa_backend,
+                zero_temp_terminate=config.sa_zero_temp_terminate,
             )
         ),
     )
