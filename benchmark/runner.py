@@ -39,7 +39,7 @@ class BenchmarkConfig:
     beta: float = 1_000.0
     typeperm: str = "asym"
     #mlayer_backend: str = "permanental"
-    mlayer_backend: str = "permanental_alt"
+    mlayer_backend: str = "permanental_alt"                 # induces drift 
     mixing_backend: str = "mlayer_directional"
     shift: float = 0.0
     skew: float = 0.0
