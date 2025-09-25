@@ -116,14 +116,17 @@ def _simulated_annealing_kernel(
 
                     row_start = indptr[idx]
                     row_end = indptr[idx + 1]
-                    new_field = 0.0
+                    diag = 0.0
                     for pos in range(row_start, row_end):
                         j = indices[pos]
                         weight = data[pos]
-                        if j != idx:
+                        if j == idx:
+                            diag += weight
+                        else:
                             local_fields[j] += weight * diff
-                        new_field += weight * state[j]
-                    local_fields[idx] = new_field
+
+                    if diag != 0.0:
+                        local_fields[idx] += diag * diff
 
             if beta_is_inf and zero_temp_break and flips_this_sweep == 0:
                 break
@@ -161,7 +164,17 @@ def run_optimized_simulated_annealing(
     if config.steps <= 0:
         raise ValueError("Number of steps must be positive")
 
-    matrix = sp.csr_matrix(J)
+    if sp.isspmatrix_csr(J):
+        matrix = J.copy()
+    elif sp.issparse(J):
+        matrix = J.tocsr()
+    else:
+        matrix = sp.csr_matrix(J)
+
+    if not matrix.has_sorted_indices:
+        matrix.sort_indices()
+
+    matrix = matrix.astype(np.float64, copy=False)
     n = matrix.shape[0]
     K = config.K
 
