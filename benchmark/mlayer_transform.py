@@ -2,12 +2,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Dict
 
 import numpy as np
 import scipy.sparse as sp
 
-from .mlayer_core import mlayer
+from .mlayer_alt import mlayer as mlayer_alternative
+from .mlayer_core import mlayer as mlayer_permanental
+
+
+_MLAYER_BACKENDS: Dict[str, Callable[[np.ndarray, int, np.ndarray, str], sp.csr_matrix]] = {
+    "permanental": mlayer_permanental,
+    "permanental_alt": mlayer_alternative,
+    # ``mlayer2`` is kept as an alias for backwards compatibility.
+    "mlayer2": mlayer_permanental,
+}
 
 # ---------------------------------------------------------------------------
 # Type aliases
@@ -33,10 +42,12 @@ class MLayerTransformer:
         """Return the dense coupling matrix after applying the M-layer map."""
 
         backend = request.backend.lower()
-        if backend not in {"mlayer2", "permanental"}:
+        if backend not in _MLAYER_BACKENDS:
             raise ValueError(f"Unsupported M-layer backend: {request.backend}")
 
-        result = mlayer(
+        mlayer_impl = _MLAYER_BACKENDS[backend]
+
+        result = mlayer_impl(
             request.J0_dense,
             request.M,
             request.mixing_matrix,
@@ -52,7 +63,7 @@ def create_mlayer_constructor(backend: str) -> MLayerConstructor:
     """Return a callable that applies the requested M-layer transformation."""
 
     backend_name = backend.lower()
-    if backend_name not in {"mlayer2", "permanental"}:
+    if backend_name not in _MLAYER_BACKENDS:
         raise ValueError(f"Unsupported M-layer constructor backend: {backend}")
 
     def _mlayer2_constructor(
@@ -61,7 +72,7 @@ def create_mlayer_constructor(backend: str) -> MLayerConstructor:
         Q: np.ndarray,
         typeperm: str = "asym",
     ) -> np.ndarray:
-        result = mlayer(J0_dense, M, Q, typeperm=typeperm)
+        result = _MLAYER_BACKENDS[backend_name](J0_dense, M, Q, typeperm=typeperm)
         if sp.issparse(result):
             return np.array(result.todense())
         return np.array(result)
