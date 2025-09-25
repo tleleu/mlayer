@@ -220,4 +220,3 @@ __all__ = [
     "OptimizedSimulatedAnnealingConfig",
     "run_optimized_simulated_annealing",
 ]
-
