@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -29,6 +30,19 @@ except Exception:  # pragma: no cover - legacy module optional at import time
     LegacySimulatedAnnealingConfig = None  # type: ignore[assignment]
     run_legacy_simulated_annealing = None  # type: ignore[assignment]
     _LEGACY_SA_AVAILABLE = False
+
+
+try:
+    from .optimized_simulated_annealing import (
+        OptimizedSimulatedAnnealingConfig,
+        run_optimized_simulated_annealing,
+    )
+
+    _OPTIMIZED_SA_AVAILABLE = True
+except Exception:  # pragma: no cover - numba optional dependency
+    OptimizedSimulatedAnnealingConfig = None  # type: ignore[assignment]
+    run_optimized_simulated_annealing = None  # type: ignore[assignment]
+    _OPTIMIZED_SA_AVAILABLE = False
 
 
 @dataclass
@@ -67,6 +81,7 @@ class SimulatedAnnealingRunner:
         code = self.config.code.lower()
 
         if code in {"neal", "legacy"}:
+          
             if not _LEGACY_SA_AVAILABLE:
                 raise RuntimeError("Legacy simulated annealing backend is unavailable")
 
@@ -84,6 +99,17 @@ class SimulatedAnnealingRunner:
                 initial=x0,
                 steps_override=n_steps,
             )
+        
+            _, final_spins = SA.run_SA(
+                N,
+                J,
+                n_steps,
+                K,
+                self.config.beta,
+                SAcode=self.config.code,
+                x0=x0,
+            )
+            return final_spins
 
         if code in {"optimized", "numba", "local"}:
             if not _OPTIMIZED_SA_AVAILABLE:
