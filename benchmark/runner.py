@@ -48,6 +48,7 @@ class BenchmarkConfig:
     parallel: bool = False
     parallel_workers: Optional[int] = None
     sa_backend: str = "neal"
+    #sa_backend: str = "optimized"
     sa_zero_temp_terminate: bool = True
 
 
