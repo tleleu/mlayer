@@ -32,16 +32,17 @@ class BenchmarkConfig:
     problem: str = "bethe"
     L: int = 2
     Ml: Sequence[int] = (20, 40, 100)
-    SigmaL: Sequence[float] = tuple(np.linspace(0.01, 1.00, 10))
+    sigmal: Sequence[float] = tuple(np.linspace(0.01, 1.00, 10))
     reps: int = 1
     K: int = 50
     steps0: int = 200
     beta: float = 1_000.0
     typeperm: str = "asym"
-    mlayer_backend: str = "permanental"
+    #mlayer_backend: str = "permanental"
+    mlayer_backend: str = "permanental_alt"
     mixing_backend: str = "mlayer_directional"
     shift: float = 0.0
-    skew: float = 0.2
+    skew: float = 0.0
     seed0: int = 42
     parallel: bool = False
 
@@ -99,9 +100,9 @@ class BenchmarkRunner:
     def run(self) -> None:
         cfg = self.config
         Ml = np.asarray(cfg.Ml, dtype=int)
-        SigmaL = np.asarray(cfg.SigmaL, dtype=float)
+        sigmal = np.asarray(cfg.sigmal, dtype=float)
 
-        Emean = np.zeros((len(SigmaL), len(Ml), cfg.reps))
+        Emean = np.zeros((len(sigmal), len(Ml), cfg.reps))
         Qavg = np.zeros_like(Emean)
 
         sa = self.solver
@@ -114,7 +115,7 @@ class BenchmarkRunner:
             for iM, M in enumerate(tqdm(Ml, desc="M sweep")):
                 seed_base = int(cfg.seed0 + 10_000 * r + 1_000 * iM)
 
-                for i_sigma, sigma in enumerate(SigmaL):
+                for i_sigma, sigma in enumerate(sigmal):
                     Q = self.mixing_matrix(int(M), float(sigma), i_sigma)
 
                     J = self.mlayer_transform(J0_dense, int(M), Q, cfg.typeperm)
@@ -143,7 +144,7 @@ class BenchmarkRunner:
         filename = folder / f"energy_N{cfg.N0}_reps{cfg.reps}_K{cfg.K}_steps{cfg.steps0}_L{cfg.L}.npz"
         np.savez(
             filename,
-            SigmaL=SigmaL,
+            sigmal=sigmal,
             mean_res=mean_res,
             ci95_res=ci95_res,
             mean_qavg=mean_qavg,
@@ -155,8 +156,8 @@ class BenchmarkRunner:
             fr"$N={cfg.N0}$, $reps={cfg.reps}$, $K={cfg.K}$, "
             fr"$steps0={cfg.steps0}$, $L={cfg.L}$"
         )
-        plotter.plot_energy_summary(SigmaL, Ml, mean_res, ci95_res, mean_qavg, ci95_qavg, title=plot_title)
-        plotter.plot_min_residual(Ml, mean_res, ci95_res, SigmaL)
+        plotter.plot_energy_summary(sigmal, Ml, mean_res, ci95_res, mean_qavg, ci95_qavg, title=plot_title)
+        plotter.plot_min_residual(Ml, mean_res, ci95_res, sigmal)
 
 
 __all__ = ["BenchmarkRunner", "BenchmarkConfig", "BenchmarkDefinition"]
