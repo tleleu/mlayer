@@ -2,21 +2,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Optional
 
 import numpy as np
+import scipy.sparse as sp
 
-import sys
-
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-LEGACY_MCMC_NEAL = PROJECT_ROOT / "MCMC_neal"
-
-if str(LEGACY_MCMC_NEAL) not in sys.path:
-    sys.path.insert(0, str(LEGACY_MCMC_NEAL))
-
-import SA  # type: ignore  # legacy module
+import neal.simulated_annealing as _neal_sa
 
 
 @dataclass
@@ -28,7 +19,7 @@ class LegacySimulatedAnnealingConfig:
 
 
 def run_legacy_simulated_annealing(
-    J: np.ndarray,
+    J: np.ndarray | sp.spmatrix,
     seed: int,
     *,
     config: LegacySimulatedAnnealingConfig,
@@ -57,17 +48,30 @@ def run_legacy_simulated_annealing(
         if x0.shape != (K, N):
             raise ValueError(f"Initial state has shape {x0.shape}, expected {(K, N)}")
 
-    _, final_spins = SA.run_SA(
-        N,
-        J,
-        steps,
+    if sp.issparse(J):
+        coo = J.tocoo()
+    else:
+        coo = sp.coo_matrix(np.asarray(J))
+
+    num_sweeps_per_beta = 1
+    beta_schedule = np.full(steps, config.beta, dtype=float)
+    ldata = np.zeros(N, dtype=float)
+    interrupt_function = None
+
+    samples, _ = _neal_sa.simulated_annealing(
         K,
-        config.beta,
-        SAcode=config.code,
-        x0=x0,
+        ldata,
+        coo.row.astype(np.int64, copy=False),
+        coo.col.astype(np.int64, copy=False),
+        np.asarray(coo.data, dtype=float),
+        num_sweeps_per_beta,
+        beta_schedule,
+        int(rng.integers(0, 2**31, dtype=np.int64)),
+        x0,
+        interrupt_function,
     )
 
-    return np.asarray(final_spins, dtype=np.int8)
+    return np.asarray(samples, dtype=np.int8)
 
 
 __all__ = [

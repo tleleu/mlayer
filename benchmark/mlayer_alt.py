@@ -33,7 +33,7 @@ def _sample_permutation(
 
 
 def mlayer(
-    couplings: np.ndarray,
+    couplings: np.ndarray | sp.spmatrix,
     layers: int,
     mixing: np.ndarray,
     *,
@@ -50,18 +50,24 @@ def mlayer(
     if layers == 1:
         return sp.csr_matrix(couplings)
 
-    base = np.asarray(couplings)
-    n = base.shape[0]
-
-    upper = np.triu(base)
-    rows, cols = np.nonzero(upper)
+    if sp.issparse(couplings):
+        base_sparse = sp.csr_matrix(couplings)
+        n = int(base_sparse.shape[0])
+        upper = sp.triu(base_sparse, k=0).tocoo()
+        entries = zip(upper.row, upper.col, upper.data)
+    else:
+        base = np.asarray(couplings)
+        n = int(base.shape[0])
+        upper = np.triu(base)
+        rows, cols = np.nonzero(upper)
+        entries = ((int(i), int(j), float(upper[i, j])) for i, j in zip(rows, cols))
 
     data: list[float] = []
     row_idx: list[int] = []
     col_idx: list[int] = []
 
-    for i, j in zip(rows, cols):
-        weight = float(upper[i, j])
+    for i, j, weight in entries:
+        weight = float(weight)
         if weight == 0.0:
             continue
 

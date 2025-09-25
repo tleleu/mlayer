@@ -129,7 +129,7 @@ def _flatten(layer: int, node: int, size: int) -> int:
 
 
 def mlayer(
-    couplings: Array,
+    couplings: Array | sp.spmatrix,
     layers: int,
     mixing: Array,
     *,
@@ -141,10 +141,17 @@ def mlayer(
     if layers == 1:
         return sp.csr_matrix(couplings)
 
-    base = np.asarray(couplings)
-    n = base.shape[0]
-    upper = np.triu(base)
-    rows, cols = np.nonzero(upper)
+    if sp.issparse(couplings):
+        base_sparse = sp.csr_matrix(couplings)
+        n = int(base_sparse.shape[0])
+        upper = sp.triu(base_sparse, k=0).tocoo()
+        entries = zip(upper.row, upper.col, upper.data)
+    else:
+        base = np.asarray(couplings)
+        n = int(base.shape[0])
+        upper = np.triu(base)
+        rows, cols = np.nonzero(upper)
+        entries = ((int(i), int(j), float(upper[i, j])) for i, j in zip(rows, cols))
 
     sampler_config = sampler_config or PermanentalSamplerConfig()
 
@@ -152,8 +159,8 @@ def mlayer(
     row_idx: list[int] = []
     col_idx: list[int] = []
 
-    for i, j in zip(rows, cols):
-        weight = float(upper[i, j])
+    for i, j, weight in entries:
+        weight = float(weight)
         if weight == 0.0:
             continue
 
