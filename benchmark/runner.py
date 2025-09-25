@@ -137,7 +137,7 @@ class BenchmarkRunner:
         mean_qavg = Qavg.mean(axis=2)
         ci95_qavg = 1.96 * Qavg.std(axis=2) / np.sqrt(cfg.reps)
 
-        folder = Path("energy")
+        folder = Path("results/energy")
         folder.mkdir(exist_ok=True)
         filename = folder / f"energy_N{cfg.N0}_reps{cfg.reps}_K{cfg.K}_steps{cfg.steps0}_L{cfg.L}.npz"
         np.savez(
