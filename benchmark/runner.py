@@ -116,7 +116,7 @@ class BenchmarkRunner:
 
         for r in range(cfg.reps):
             problem = self.problem_constructor(cfg)
-            J0_dense = problem.build_dense()
+            J0 = problem.build_couplings()
             e0_r = np.inf
 
             for iM, M in enumerate(tqdm(Ml, desc="M sweep")):
@@ -126,14 +126,14 @@ class BenchmarkRunner:
                     i_sigma, sigma = item
                     Q = self.mixing_matrix(int(M), float(sigma), i_sigma)
 
-                    J = self.mlayer_transform(J0_dense, int(M), Q, cfg.typeperm)
+                    J = self.mlayer_transform(J0, int(M), Q, cfg.typeperm)
 
                     spins = sa.run(
                         J,
                         seed=seed_base + i_sigma,
                         steps=cfg.steps0 * int(M),
                     )
-                    observables = self.observable.compute(spins, J0_dense, int(M))
+                    observables = self.observable.compute(spins, J0, int(M))
 
                     return (
                         i_sigma,

@@ -11,7 +11,9 @@ from .mlayer_alt import mlayer as mlayer_alternative
 from .mlayer_core import mlayer as mlayer_permanental
 
 
-_MLAYER_BACKENDS: Dict[str, Callable[[np.ndarray, int, np.ndarray, str], sp.csr_matrix]] = {
+_MLAYER_BACKENDS: Dict[
+    str, Callable[[sp.spmatrix | np.ndarray, int, np.ndarray, str], sp.csr_matrix]
+] = {
     "permanental": mlayer_permanental,
     "permanental_alt": mlayer_alternative,
     # ``mlayer2`` is kept as an alias for backwards compatibility.
@@ -21,14 +23,14 @@ _MLAYER_BACKENDS: Dict[str, Callable[[np.ndarray, int, np.ndarray, str], sp.csr_
 # ---------------------------------------------------------------------------
 # Type aliases
 # ---------------------------------------------------------------------------
-MLayerConstructor = Callable[[np.ndarray, int, np.ndarray, str], np.ndarray]
+MLayerConstructor = Callable[[sp.spmatrix | np.ndarray, int, np.ndarray, str], sp.csr_matrix]
 
 
 @dataclass
 class MLayerTransformRequest:
     """Configuration for :class:`MLayerTransformer`."""
 
-    J0_dense: np.ndarray
+    couplings: sp.spmatrix | np.ndarray
     M: int
     mixing_matrix: np.ndarray
     typeperm: str = "asym"
@@ -38,8 +40,8 @@ class MLayerTransformRequest:
 class MLayerTransformer:
     """Wrap the M-layer implementation behind a simple API."""
 
-    def transform(self, request: MLayerTransformRequest) -> np.ndarray:
-        """Return the dense coupling matrix after applying the M-layer map."""
+    def transform(self, request: MLayerTransformRequest) -> sp.csr_matrix:
+        """Return the sparse coupling matrix after applying the M-layer map."""
 
         backend = request.backend.lower()
         if backend not in _MLAYER_BACKENDS:
@@ -48,15 +50,12 @@ class MLayerTransformer:
         mlayer_impl = _MLAYER_BACKENDS[backend]
 
         result = mlayer_impl(
-            request.J0_dense,
+            request.couplings,
             request.M,
             request.mixing_matrix,
             typeperm=request.typeperm,
         )
-
-        if sp.issparse(result):
-            return np.array(result.todense())
-        return np.array(result)
+        return result if sp.issparse(result) else sp.csr_matrix(result)
 
 
 def create_mlayer_constructor(backend: str) -> MLayerConstructor:
@@ -67,15 +66,13 @@ def create_mlayer_constructor(backend: str) -> MLayerConstructor:
         raise ValueError(f"Unsupported M-layer constructor backend: {backend}")
 
     def _mlayer2_constructor(
-        J0_dense: np.ndarray,
+        couplings: sp.spmatrix | np.ndarray,
         M: int,
         Q: np.ndarray,
         typeperm: str = "asym",
-    ) -> np.ndarray:
-        result = _MLAYER_BACKENDS[backend_name](J0_dense, M, Q, typeperm=typeperm)
-        if sp.issparse(result):
-            return np.array(result.todense())
-        return np.array(result)
+    ) -> sp.csr_matrix:
+        result = _MLAYER_BACKENDS[backend_name](couplings, M, Q, typeperm=typeperm)
+        return result if sp.issparse(result) else sp.csr_matrix(result)
 
     return _mlayer2_constructor
 

@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Optional
 
 import numpy as np
+import scipy.sparse as sp
 
 try:
     from .optimized_simulated_annealing import (
@@ -32,19 +32,6 @@ except Exception:  # pragma: no cover - legacy module optional at import time
     _LEGACY_SA_AVAILABLE = False
 
 
-try:
-    from .optimized_simulated_annealing import (
-        OptimizedSimulatedAnnealingConfig,
-        run_optimized_simulated_annealing,
-    )
-
-    _OPTIMIZED_SA_AVAILABLE = True
-except Exception:  # pragma: no cover - numba optional dependency
-    OptimizedSimulatedAnnealingConfig = None  # type: ignore[assignment]
-    run_optimized_simulated_annealing = None  # type: ignore[assignment]
-    _OPTIMIZED_SA_AVAILABLE = False
-
-
 @dataclass
 class SimulatedAnnealingConfig:
     steps: int
@@ -62,7 +49,7 @@ class SimulatedAnnealingRunner:
 
     def run(
         self,
-        J: np.ndarray,
+        J: np.ndarray | sp.spmatrix,
         seed: int,
         initial: Optional[np.ndarray] = None,
         steps: Optional[int] = None,
@@ -99,17 +86,6 @@ class SimulatedAnnealingRunner:
                 initial=x0,
                 steps_override=n_steps,
             )
-        
-            _, final_spins = SA.run_SA(
-                N,
-                J,
-                n_steps,
-                K,
-                self.config.beta,
-                SAcode=self.config.code,
-                x0=x0,
-            )
-            return final_spins
 
         if code in {"optimized", "numba", "local"}:
             if not _OPTIMIZED_SA_AVAILABLE:
@@ -117,6 +93,7 @@ class SimulatedAnnealingRunner:
                     "Optimized simulated annealing backend requires numba and scipy"
                 )
 
+            J_dense = J.toarray() if sp.issparse(J) else np.asarray(J)
             opt_config = OptimizedSimulatedAnnealingConfig(
                 steps=self.config.steps,
                 K=K,
@@ -125,7 +102,7 @@ class SimulatedAnnealingRunner:
             )
 
             return run_optimized_simulated_annealing(
-                J,
+                J_dense,
                 seed,
                 config=opt_config,
                 initial=x0,
