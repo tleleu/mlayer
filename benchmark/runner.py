@@ -162,9 +162,16 @@ class BenchmarkRunner:
         mean_qavg = Qavg.mean(axis=2)
         ci95_qavg = 1.96 * Qavg.std(axis=2) / np.sqrt(cfg.reps)
 
-        folder = Path("results/energy")
+        folder = Path(__file__).resolve().parent / "results" / "runner"
         folder.mkdir(parents=True, exist_ok=True)
-        filename = folder / f"energy_N{cfg.N0}_reps{cfg.reps}_K{cfg.K}_steps{cfg.steps0}_L{cfg.L}.npz"
+        filename = (
+            folder
+            / (
+                "energy_"
+                f"N{cfg.N0}_reps{cfg.reps}_K{cfg.K}_steps{cfg.steps0}_L{cfg.L}_"
+                f"backend-{cfg.sa_backend}_shift{cfg.shift}_skew{cfg.skew}.npz"
+            )
+        )
         np.savez(
             filename,
             sigmal=sigmal,
@@ -172,6 +179,9 @@ class BenchmarkRunner:
             ci95_res=ci95_res,
             mean_qavg=mean_qavg,
             ci95_qavg=ci95_qavg,
+            sa_backend=cfg.sa_backend,
+            shift=cfg.shift,
+            skew=cfg.skew,
         )
 
         plotter = BenchmarkPlotter(PlotConfig(show_residual=True))
@@ -179,8 +189,23 @@ class BenchmarkRunner:
             fr"$N={cfg.N0}$, $reps={cfg.reps}$, $K={cfg.K}$, "
             fr"$steps0={cfg.steps0}$, $L={cfg.L}$"
         )
-        plotter.plot_energy_summary(sigmal, Ml, mean_res, ci95_res, mean_qavg, ci95_qavg, title=plot_title)
-        plotter.plot_min_residual(Ml, mean_res, ci95_res, sigmal)
+        plotter.plot_energy_summary(
+            sigmal,
+            Ml,
+            mean_res,
+            ci95_res,
+            mean_qavg,
+            ci95_qavg,
+            title=plot_title,
+            output_dir=folder,
+        )
+        plotter.plot_min_residual(
+            Ml,
+            mean_res,
+            ci95_res,
+            sigmal,
+            output_dir=folder,
+        )
 
 
 __all__ = ["BenchmarkRunner", "BenchmarkConfig", "BenchmarkDefinition"]
