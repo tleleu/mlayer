@@ -10,9 +10,10 @@ import numpy as np
 from tqdm import tqdm
 
 if __package__ in {None, ""}:
-    # Allow running the module directly as ``python benchmark/runner.py`` by making
-    # sure the repository root (parent of ``benchmark``) is importable.
-    sys.path.append(str(Path(__file__).resolve().parent.parent))
+    #sys.path.append(str(Path(__file__).resolve().parent.parent))
+    repo_root = Path(__file__).resolve().parent.parent
+    sys.path.append(str(repo_root))
+    sys.path.append(str(repo_root / "MCMC_neal"))                    # temp
 
 from benchmark.mixing import MixingMatrix
 from benchmark.mlayer_transform import MLayerConstructor, create_mlayer_constructor
