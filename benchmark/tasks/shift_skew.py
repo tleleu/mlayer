@@ -4,8 +4,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Tuple
 
+import sys
+
 import matplotlib.pyplot as plt
 import numpy as np
+
+if __package__ is None or __package__ == "":
+    repo_root = Path(__file__).resolve().parents[2]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
 
 from benchmark.runner import BenchmarkConfig, BenchmarkRunner
 
