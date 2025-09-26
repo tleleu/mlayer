@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import sys
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Optional, Sequence
+from typing import Callable, Dict, Optional, Sequence, cast
 
 import numpy as np
+import scipy.sparse as sp
 from tqdm import tqdm
 
 if __package__ in {None, ""}:
@@ -89,6 +90,79 @@ BENCHMARK_DEFINITIONS: Dict[str, BenchmarkDefinition] = {
 }
 
 
+_WORKER_CONTEXT: dict[str, object] = {}
+
+
+def _init_parallel_worker(config: BenchmarkConfig) -> None:
+    """Initialise heavy benchmark components inside a worker process."""
+
+    global _WORKER_CONTEXT
+
+    mixing_matrix = MixingMatrix(
+        config.mixing_backend,
+        L=config.L,
+        shift=config.shift,
+        skew=config.skew,
+    )
+    mlayer_constructor = create_mlayer_constructor(config.mlayer_backend)
+    solver_config = SimulatedAnnealingConfig(
+        steps=config.steps0,
+        K=config.K,
+        beta=config.beta,
+        code=config.sa_backend,
+        zero_temp_terminate=config.sa_zero_temp_terminate,
+    )
+    solver = SimulatedAnnealingRunner(solver_config)
+    observable = ObservableEvaluator()
+
+    _WORKER_CONTEXT = {
+        "config": config,
+        "mixing_matrix": mixing_matrix,
+        "mlayer_constructor": mlayer_constructor,
+        "solver": solver,
+        "observable": observable,
+    }
+
+
+def _evaluate_sigma_parallel(
+    args: tuple[
+        np.ndarray | sp.spmatrix,
+        int,
+        int,
+        int,
+        float,
+    ]
+) -> tuple[int, float, float, float]:
+    """Evaluate a single ``sigma`` value inside a worker process."""
+
+    if not _WORKER_CONTEXT:
+        raise RuntimeError("Parallel worker context has not been initialised")
+
+    J0, M, seed_base, i_sigma, sigma = args
+
+    config = cast(BenchmarkConfig, _WORKER_CONTEXT["config"])
+    mixing_matrix = cast(MixingMatrix, _WORKER_CONTEXT["mixing_matrix"])
+    mlayer_constructor = cast(MLayerConstructor, _WORKER_CONTEXT["mlayer_constructor"])
+    solver = cast(SimulatedAnnealingRunner, _WORKER_CONTEXT["solver"])
+    observable = cast(ObservableEvaluator, _WORKER_CONTEXT["observable"])
+
+    Q = mixing_matrix(int(M), float(sigma), int(i_sigma))
+    J = mlayer_constructor(J0, int(M), Q, typeperm=config.typeperm)
+    spins = solver.run(
+        J,
+        seed=int(seed_base + int(i_sigma)),
+        steps=int(config.steps0 * int(M)),
+    )
+    observables = observable.compute(spins, J0, int(M))
+
+    return (
+        int(i_sigma),
+        float(observables.energy_mean),
+        float(observables.q_average),
+        float(observables.energy_min),
+    )
+
+
 class BenchmarkRunner:
 
     def __init__(self, config: BenchmarkConfig) -> None:
@@ -114,48 +188,67 @@ class BenchmarkRunner:
 
         sa = self.solver
 
-        for r in range(cfg.reps):
-            problem = self.problem_constructor(cfg)
-            J0 = problem.build_couplings()
-            e0_r = np.inf
+        executor: ProcessPoolExecutor | None = None
+        if cfg.parallel:
+            executor = ProcessPoolExecutor(
+                max_workers=cfg.parallel_workers,
+                initializer=_init_parallel_worker,
+                initargs=(cfg,),
+            )
 
-            for iM, M in enumerate(tqdm(Ml, desc="M sweep")):
-                seed_base = int(cfg.seed0 + 10_000 * r + 1_000 * iM)
+        try:
+            for r in range(cfg.reps):
+                problem = self.problem_constructor(cfg)
+                J0 = problem.build_couplings()
+                e0_r = np.inf
 
-                def evaluate_sigma(item: tuple[int, float]) -> tuple[int, float, float, float]:
-                    i_sigma, sigma = item
-                    Q = self.mixing_matrix(int(M), float(sigma), i_sigma)
+                for iM, M in enumerate(tqdm(Ml, desc="M sweep")):
+                    seed_base = int(cfg.seed0 + 10_000 * r + 1_000 * iM)
 
-                    J = self.mlayer_transform(J0, int(M), Q, cfg.typeperm)
+                    def evaluate_sigma(
+                        item: tuple[int, float]
+                    ) -> tuple[int, float, float, float]:
+                        i_sigma, sigma = item
+                        Q = self.mixing_matrix(int(M), float(sigma), i_sigma)
 
-                    spins = sa.run(
-                        J,
-                        seed=seed_base + i_sigma,
-                        steps=cfg.steps0 * int(M),
-                    )
-                    observables = self.observable.compute(spins, J0, int(M))
+                        J = self.mlayer_transform(J0, int(M), Q, cfg.typeperm)
 
-                    return (
-                        i_sigma,
-                        observables.energy_mean,
-                        observables.q_average,
-                        observables.energy_min,
-                    )
+                        spins = sa.run(
+                            J,
+                            seed=seed_base + i_sigma,
+                            steps=cfg.steps0 * int(M),
+                        )
+                        observables = self.observable.compute(spins, J0, int(M))
 
-                sigma_iter = list(enumerate(sigmal))
-                if cfg.parallel:
-                    with ThreadPoolExecutor(max_workers=cfg.parallel_workers) as executor:
-                        results = list(executor.map(evaluate_sigma, sigma_iter))
-                else:
-                    results = [evaluate_sigma(item) for item in sigma_iter]
+                        return (
+                            i_sigma,
+                            observables.energy_mean,
+                            observables.q_average,
+                            observables.energy_min,
+                        )
 
-                for i_sigma, energy_mean, q_average, energy_min in results:
-                    Emean[i_sigma, iM, r] = energy_mean
-                    Qavg[i_sigma, iM, r] = q_average
-                    if energy_min < e0_r:
-                        e0_r = energy_min
+                    sigma_iter = list(enumerate(sigmal))
+                    if executor is not None:
+                        task_iter = (
+                            (J0, int(M), seed_base, int(i_sigma), float(sigma))
+                            for i_sigma, sigma in sigma_iter
+                        )
+                        results = list(
+                            executor.map(_evaluate_sigma_parallel, task_iter)
+                        )
+                    else:
+                        results = [evaluate_sigma(item) for item in sigma_iter]
 
-            Emean[:, :, r] -= e0_r
+                    for i_sigma, energy_mean, q_average, energy_min in results:
+                        Emean[i_sigma, iM, r] = energy_mean
+                        Qavg[i_sigma, iM, r] = q_average
+                        if energy_min < e0_r:
+                            e0_r = energy_min
+
+                Emean[:, :, r] -= e0_r
+        finally:
+            if executor is not None:
+                executor.shutdown()
 
         mean_res = Emean.mean(axis=2)
         ci95_res = 1.96 * Emean.std(axis=2) / np.sqrt(cfg.reps)
