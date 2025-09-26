@@ -49,47 +49,15 @@ def _run_benchmark(config: BenchmarkConfig, output_dir: Path) -> Dict[str, np.nd
 
     runner = BenchmarkRunner(config)
     cfg = runner.config
+    result = runner.run(save=False, plot=False)
 
-    Ml = np.asarray(cfg.Ml, dtype=int)
-    sigmal = np.asarray(cfg.sigmal, dtype=float)
-
-    Emean = np.zeros((len(sigmal), len(Ml), cfg.reps), dtype=float)
-    Qavg = np.zeros_like(Emean)
-
-    sa = runner.solver
-
-    for r in range(cfg.reps):
-        problem = runner.problem_constructor(cfg)
-        J0 = problem.build_couplings()
-        e0_r = np.inf
-
-        for iM, M in enumerate(Ml):
-            seed_base = int(cfg.seed0 + 10_000 * r + 1_000 * iM)
-
-            for i_sigma, sigma in enumerate(sigmal):
-                Q = runner.mixing_matrix(int(M), float(sigma), i_sigma)
-                J = runner.mlayer_transform(J0, int(M), Q, cfg.typeperm)
-
-                spins = sa.run(
-                    J,
-                    seed=seed_base + i_sigma,
-                    steps=cfg.steps0 * int(M),
-                )
-
-                observables = runner.observable.compute(spins, J0, int(M))
-
-                Emean[i_sigma, iM, r] = observables.energy_mean
-                Qavg[i_sigma, iM, r] = observables.q_average
-                if observables.energy_min < e0_r:
-                    e0_r = observables.energy_min
-
-        Emean[:, :, r] -= e0_r
-
-    mean_res = Emean.mean(axis=2)
-    ci95_res = 1.96 * Emean.std(axis=2) / np.sqrt(cfg.reps)
-    mean_qavg = Qavg.mean(axis=2)
-    ci95_qavg = 1.96 * Qavg.std(axis=2) / np.sqrt(cfg.reps)
-    residual_energy = float(mean_res.min())
+    Ml = np.asarray(result.Ml, dtype=int)
+    sigmal = np.asarray(result.sigmal, dtype=float)
+    mean_res = result.mean_res
+    ci95_res = result.ci95_res
+    mean_qavg = result.mean_qavg
+    ci95_qavg = result.ci95_qavg
+    residual_energy = result.residual_energy
 
     output_dir.mkdir(parents=True, exist_ok=True)
     filename = output_dir / (

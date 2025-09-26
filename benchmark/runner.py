@@ -54,6 +54,22 @@ class BenchmarkConfig:
 
 
 @dataclass
+class BenchmarkResult:
+    """Container for raw and aggregated benchmark statistics."""
+
+    Ml: np.ndarray
+    sigmal: np.ndarray
+    energy: np.ndarray
+    qavg: np.ndarray
+    mean_res: np.ndarray
+    ci95_res: np.ndarray
+    mean_qavg: np.ndarray
+    ci95_qavg: np.ndarray
+    residual_energy: float
+    output_file: Optional[Path] = None
+
+
+@dataclass
 class BenchmarkDefinition:
     """Holds the constructors required to assemble a benchmark run."""
 
@@ -178,7 +194,16 @@ class BenchmarkRunner:
         self.observable = self.definition.observable_constructor(config)
         self.solver = self.definition.solver_constructor(config)
 
-    def run(self) -> None:
+    def run(
+        self,
+        output_dir: Path | None = None,
+        *,
+        save: bool = True,
+        plot: bool = True,
+        filename: str | None = None,
+    ) -> BenchmarkResult:
+        """Execute the benchmark and optionally persist or plot the results."""
+
         cfg = self.config
         Ml = np.asarray(cfg.Ml, dtype=int)
         sigmal = np.asarray(cfg.sigmal, dtype=float)
@@ -222,9 +247,9 @@ class BenchmarkRunner:
 
                         return (
                             i_sigma,
-                            observables.energy_mean,
-                            observables.q_average,
-                            observables.energy_min,
+                            float(observables.energy_mean),
+                            float(observables.q_average),
+                            float(observables.energy_min),
                         )
 
                     sigma_iter = list(enumerate(sigmal))
@@ -254,54 +279,85 @@ class BenchmarkRunner:
         ci95_res = 1.96 * Emean.std(axis=2) / np.sqrt(cfg.reps)
         mean_qavg = Qavg.mean(axis=2)
         ci95_qavg = 1.96 * Qavg.std(axis=2) / np.sqrt(cfg.reps)
+        residual_energy = float(mean_res.min())
 
-        folder = Path(__file__).resolve().parent / "results" / "runner"
-        folder.mkdir(parents=True, exist_ok=True)
-        filename = (
-            folder
-            / (
-                "energy_"
-                f"N{cfg.N0}_reps{cfg.reps}_K{cfg.K}_steps{cfg.steps0}_L{cfg.L}_"
-                f"backend-{cfg.sa_backend}_shift{cfg.shift}_skew{cfg.skew}.npz"
-            )
-        )
-        np.savez(
-            filename,
+        result = BenchmarkResult(
+            Ml=Ml,
             sigmal=sigmal,
+            energy=Emean,
+            qavg=Qavg,
             mean_res=mean_res,
             ci95_res=ci95_res,
             mean_qavg=mean_qavg,
             ci95_qavg=ci95_qavg,
-            sa_backend=cfg.sa_backend,
-            shift=cfg.shift,
-            skew=cfg.skew,
+            residual_energy=residual_energy,
         )
 
-        plotter = BenchmarkPlotter(PlotConfig(show_residual=True))
-        plot_title = (
-            fr"$N={cfg.N0}$, $reps={cfg.reps}$, $K={cfg.K}$, "
-            fr"$steps0={cfg.steps0}$, $L={cfg.L}$"
-        )
-        plotter.plot_energy_summary(
-            sigmal,
-            Ml,
-            mean_res,
-            ci95_res,
-            mean_qavg,
-            ci95_qavg,
-            title=plot_title,
-            output_dir=folder,
-        )
-        plotter.plot_min_residual(
-            Ml,
-            mean_res,
-            ci95_res,
-            sigmal,
-            output_dir=folder,
-        )
+        target_dir: Path | None = None
+        if save or plot:
+            target_dir = (
+                output_dir
+                if output_dir is not None
+                else Path(__file__).resolve().parent / "results" / "runner"
+            )
+            target_dir.mkdir(parents=True, exist_ok=True)
+
+        if save:
+            assert target_dir is not None
+            default_filename = (
+                "energy_"
+                f"N{cfg.N0}_reps{cfg.reps}_K{cfg.K}_steps{cfg.steps0}_L{cfg.L}_"
+                f"backend-{cfg.sa_backend}_shift{cfg.shift}_skew{cfg.skew}.npz"
+            )
+            output_name = filename or default_filename
+            output_path = target_dir / output_name
+            np.savez(
+                output_path,
+                sigmal=sigmal,
+                mean_res=mean_res,
+                ci95_res=ci95_res,
+                mean_qavg=mean_qavg,
+                ci95_qavg=ci95_qavg,
+                sa_backend=cfg.sa_backend,
+                shift=cfg.shift,
+                skew=cfg.skew,
+            )
+            result.output_file = output_path
+
+        if plot:
+            assert target_dir is not None
+            plotter = BenchmarkPlotter(PlotConfig(show_residual=True))
+            plot_title = (
+                fr"$N={cfg.N0}$, $reps={cfg.reps}$, $K={cfg.K}$, "
+                fr"$steps0={cfg.steps0}$, $L={cfg.L}$"
+            )
+            plotter.plot_energy_summary(
+                sigmal,
+                Ml,
+                mean_res,
+                ci95_res,
+                mean_qavg,
+                ci95_qavg,
+                title=plot_title,
+                output_dir=target_dir,
+            )
+            plotter.plot_min_residual(
+                Ml,
+                mean_res,
+                ci95_res,
+                sigmal,
+                output_dir=target_dir,
+            )
+
+        return result
 
 
-__all__ = ["BenchmarkRunner", "BenchmarkConfig", "BenchmarkDefinition"]
+__all__ = [
+    "BenchmarkRunner",
+    "BenchmarkConfig",
+    "BenchmarkDefinition",
+    "BenchmarkResult",
+]
 
 
 def main() -> None:
