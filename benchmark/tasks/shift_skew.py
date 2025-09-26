@@ -26,7 +26,7 @@ def _create_config(backend: str, shift: float, skew: float, M: int) -> Benchmark
         N0=100,
         problem="bethe",
         L=2,
-        Ml=(100, 200, 300),
+        Ml=(100, 150, 200),
         sigmal=sigma_values,
         reps=1,
         K=50,
@@ -38,7 +38,7 @@ def _create_config(backend: str, shift: float, skew: float, M: int) -> Benchmark
         shift=float(shift),
         skew=float(skew),
         seed0=42,
-        parallel=False,
+        parallel=True,
         parallel_workers=None,
         sa_backend="neal",
         sa_zero_temp_terminate=True,
@@ -140,12 +140,13 @@ def _plot_residual_vs_sigma(
         f"shift={float(shift):.3f}, skew={float(skew):.3f}"
     )
     ax.legend()
+    ax.set_yscale('log')
     fig.tight_layout()
 
     filename = (
-        f"residual_vs_sigma_{backend}_shift{float(shift):.3f}_skew{float(skew):.3f}.png"
+        f"residual_vs_sigma_{backend}_shift{float(shift):.3f}_skew{float(skew):.3f}.pdf"
     )
-    fig.savefig(output_dir / filename, dpi=300)
+    fig.savefig(output_dir / filename)
     plt.close(fig)
 
 
@@ -157,7 +158,7 @@ def _parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
         metavar="M",
         type=int,
         nargs="+",
-        default=(100, 200, 300),
+        default=(100, 150, 200),
         help=(
             "Sequence of permanental sample counts to evaluate. "
             "Provide one or more integers."
@@ -324,9 +325,10 @@ def main(argv: Iterable[str] | None = None) -> None:
     ax_shift.set_xlabel("Shift")
     ax_shift.set_ylabel("Residual energy")
     ax_shift.set_title("Residual energy vs. shift")
+    ax_shift.set_yscale('log')
     ax_shift.legend()
     fig_shift.tight_layout()
-    fig_shift.savefig(results_dir / "residual_energy_vs_shift.png", dpi=300)
+    fig_shift.savefig(results_dir / "residual_energy_vs_shift.pdf")
     plt.close(fig_shift)
 
     fig_skew, ax_skew = plt.subplots(figsize=(6, 4))
@@ -346,9 +348,10 @@ def main(argv: Iterable[str] | None = None) -> None:
     ax_skew.set_xlabel("Skew")
     ax_skew.set_ylabel("Residual energy")
     ax_skew.set_title("Residual energy vs. skew")
+    ax_skew.set_yscale('log')
     ax_skew.legend()
     fig_skew.tight_layout()
-    fig_skew.savefig(results_dir / "residual_energy_vs_skew.png", dpi=300)
+    fig_skew.savefig(results_dir / "residual_energy_vs_skew.pdf")
     plt.close(fig_skew)
 
 
