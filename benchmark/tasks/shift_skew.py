@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Dict, Iterable, Tuple
+from typing import Dict, Iterable, Set, Tuple
 
 import sys
 
@@ -26,7 +26,7 @@ def _create_config(backend: str, shift: float, skew: float, M: int) -> Benchmark
         N0=100,
         problem="bethe",
         L=2,
-        Ml=(int(M),),
+        Ml=(100, 200, 300),
         sigmal=sigma_values,
         reps=1,
         K=50,
@@ -91,7 +91,62 @@ def _run_benchmark(config: BenchmarkConfig, output_dir: Path) -> Dict[str, np.nd
         "ci95_qavg": ci95_qavg,
         "residual_energy": residual_energy,
         "output_file": filename,
+        "mlayer_backend": np.array(cfg.mlayer_backend),
     }
+
+
+def _min_residual_by_M(result: Dict[str, np.ndarray]) -> Dict[int, float]:
+    """Return the minimum residual energy for each permanental sample count."""
+
+    Ml = np.asarray(result["Ml"], dtype=int)
+    mean_res = np.asarray(result["mean_res"], dtype=float)
+    min_residuals = mean_res.min(axis=0)
+    return {int(M): float(min_residuals[i]) for i, M in enumerate(Ml)}
+
+
+def _plot_residual_vs_sigma(
+    result: Dict[str, np.ndarray],
+    backend: str,
+    output_dir: Path,
+    plotted_keys: Set[Tuple[str, float, float]],
+    *,
+    shift: float,
+    skew: float,
+) -> None:
+    """Create a residual energy vs. sigma plot for the given configuration."""
+
+    key = (backend, float(shift), float(skew))
+    if key in plotted_keys:
+        return
+    plotted_keys.add(key)
+
+    sigmal = np.asarray(result["sigmal"], dtype=float)
+    mean_res = np.asarray(result["mean_res"], dtype=float)
+    Ml = np.asarray(result["Ml"], dtype=int)
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    for iM, M in enumerate(Ml):
+        ax.plot(
+            sigmal,
+            mean_res[:, iM],
+            marker="o",
+            label=f"{backend} (M={int(M)})",
+        )
+
+    ax.set_xlabel(r"$\sigma$")
+    ax.set_ylabel("Residual energy")
+    ax.set_title(
+        "Residual energy vs. sigma\n"
+        f"shift={float(shift):.3f}, skew={float(skew):.3f}"
+    )
+    ax.legend()
+    fig.tight_layout()
+
+    filename = (
+        f"residual_vs_sigma_{backend}_shift{float(shift):.3f}_skew{float(skew):.3f}.png"
+    )
+    fig.savefig(output_dir / filename, dpi=300)
+    plt.close(fig)
 
 
 def _parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
@@ -102,7 +157,7 @@ def _parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
         metavar="M",
         type=int,
         nargs="+",
-        default=(400,),
+        default=(100, 200, 300),
         help=(
             "Sequence of permanental sample counts to evaluate. "
             "Provide one or more integers."
@@ -134,39 +189,101 @@ def main(argv: Iterable[str] | None = None) -> None:
     results_dir = repo_root / "results" / "shift_skew"
 
     # Run the permanental_alt baseline.
+    plt.style.use("ggplot")
+
     permanental_alt_config = _create_config("permanental_alt", shift=0.0, skew=0.0, M=reference_M)
     permanental_alt_result = _run_benchmark(permanental_alt_config, results_dir)
 
-    # Containers for the permanental runs.
-    permanental_cache: Dict[Tuple[int, float, float], Dict[str, np.ndarray]] = {}
+    permanental_alt_min_residuals = _min_residual_by_M(permanental_alt_result)
+    if reference_M not in permanental_alt_min_residuals:
+        available = ", ".join(str(M) for M in sorted(permanental_alt_min_residuals))
+        raise ValueError(
+            f"Reference M={reference_M} is not available in the benchmark results. "
+            f"Available M values: {available}"
+        )
+    permanental_alt_reference_residual = permanental_alt_min_residuals[reference_M]
 
-    def run_permanental(M: int, shift: float, skew: float) -> Dict[str, np.ndarray]:
-        key = (int(M), float(shift), float(skew))
+    # Containers for the permanental runs.
+    permanental_cache: Dict[Tuple[float, float], Dict[str, np.ndarray]] = {}
+    sigma_plot_dir = results_dir / "sigma_curves"
+    sigma_plot_dir.mkdir(parents=True, exist_ok=True)
+    plotted_sigma_curves: Set[Tuple[str, float, float]] = set()
+
+    def run_permanental(shift: float, skew: float) -> Dict[str, np.ndarray]:
+        key = (float(shift), float(skew))
         if key not in permanental_cache:
-            config = _create_config("permanental", shift=shift, skew=skew, M=M)
+            config = _create_config("permanental", shift=shift, skew=skew, M=reference_M)
             permanental_cache[key] = _run_benchmark(config, results_dir)
+            min_residuals = _min_residual_by_M(permanental_cache[key])
+            summary = ", ".join(
+                f"M={M}: {residual:.6f}" for M, residual in sorted(min_residuals.items())
+            )
             print(
-                f"Completed permanental run: M={M}, shift={shift:.3f}, skew={skew:.3f}, "
-                f"residual={permanental_cache[key]['residual_energy']:.6f}"
+                f"Completed permanental run: shift={shift:.3f}, skew={skew:.3f}, "
+                f"residuals=({summary})"
             )
         return permanental_cache[key]
 
+    backend_alt_value = permanental_alt_result["mlayer_backend"]
+    backend_alt = (
+        str(backend_alt_value.item())
+        if isinstance(backend_alt_value, np.ndarray)
+        else str(backend_alt_value)
+    )
+    _plot_residual_vs_sigma(
+        permanental_alt_result,
+        backend_alt,
+        sigma_plot_dir,
+        plotted_sigma_curves,
+        shift=float(permanental_alt_config.shift),
+        skew=float(permanental_alt_config.skew),
+    )
+
     skew_points = np.linspace(0.0, 0.9, 10)
     skew_residuals = np.empty((len(M_values), len(skew_points)))
-    for iM, M in enumerate(M_values):
-        skew_residuals[iM] = np.array(
-            [run_permanental(M=M, shift=0.0, skew=float(skew))["residual_energy"] for skew in skew_points]
+    for j, skew in enumerate(skew_points):
+        result = run_permanental(shift=0.0, skew=float(skew))
+        _plot_residual_vs_sigma(
+            result,
+            "permanental",
+            sigma_plot_dir,
+            plotted_sigma_curves,
+            shift=0.0,
+            skew=float(skew),
         )
+        min_residuals = _min_residual_by_M(result)
+        for iM, M in enumerate(M_values):
+            try:
+                skew_residuals[iM, j] = min_residuals[int(M)]
+            except KeyError as exc:
+                available = ", ".join(str(val) for val in sorted(min_residuals))
+                raise ValueError(
+                    f"Requested M={M} is not available for skew={float(skew):.3f}. "
+                    f"Available M values: {available}"
+                ) from exc
 
     shift_points = np.linspace(0.0, 3.0, 10)
     shift_residuals = np.empty((len(M_values), len(shift_points)))
-    for iM, M in enumerate(M_values):
-        shift_residuals[iM] = np.array(
-            [
-                run_permanental(M=M, shift=float(shift), skew=0.0)["residual_energy"]
-                for shift in shift_points
-            ]
+    for j, shift in enumerate(shift_points):
+        result = run_permanental(shift=float(shift), skew=0.0)
+        _plot_residual_vs_sigma(
+            result,
+            "permanental",
+            sigma_plot_dir,
+            plotted_sigma_curves,
+            shift=float(shift),
+            skew=0.0,
         )
+        min_residuals = _min_residual_by_M(result)
+        for iM, M in enumerate(M_values):
+            try:
+                shift_residuals[iM, j] = min_residuals[int(M)]
+            except KeyError as exc:
+                available = ", ".join(str(val) for val in sorted(min_residuals))
+                raise ValueError(
+                    f"Requested M={M} is not available for shift={float(shift):.3f}. "
+                    f"Available M values: {available}"
+                ) from exc
 
     np.savez(
         results_dir / "permanental_shift_curve.npz",
@@ -175,7 +292,7 @@ def main(argv: Iterable[str] | None = None) -> None:
         backend=np.array("permanental"),
         M_values=np.asarray(M_values, dtype=int),
         reference_backend=np.array("permanental_alt"),
-        reference_residual=permanental_alt_result["residual_energy"],
+        reference_residual=permanental_alt_reference_residual,
         reference_M=np.array(reference_M, dtype=int),
     )
 
@@ -186,11 +303,9 @@ def main(argv: Iterable[str] | None = None) -> None:
         backend=np.array("permanental"),
         M_values=np.asarray(M_values, dtype=int),
         reference_backend=np.array("permanental_alt"),
-        reference_residual=permanental_alt_result["residual_energy"],
+        reference_residual=permanental_alt_reference_residual,
         reference_M=np.array(reference_M, dtype=int),
     )
-
-    plt.style.use("ggplot")
 
     fig_shift, ax_shift = plt.subplots(figsize=(6, 4))
     for iM, M in enumerate(M_values):
@@ -201,7 +316,7 @@ def main(argv: Iterable[str] | None = None) -> None:
             label=f"permanental (M={M})",
         )
     ax_shift.axhline(
-        y=permanental_alt_result["residual_energy"],
+        y=permanental_alt_reference_residual,
         color="C1",
         linestyle="--",
         label=f"permanental_alt (M={reference_M})",
@@ -223,7 +338,7 @@ def main(argv: Iterable[str] | None = None) -> None:
             label=f"permanental (M={M})",
         )
     ax_skew.axhline(
-        y=permanental_alt_result["residual_energy"],
+        y=permanental_alt_reference_residual,
         color="C1",
         linestyle="--",
         label=f"permanental_alt (M={reference_M})",
