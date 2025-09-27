@@ -9,6 +9,7 @@ import scipy.sparse as sp
 
 from .mlayer_alt import mlayer as mlayer_alternative
 from .mlayer_core import mlayer as mlayer_permanental
+from .mlayer_long import mlayer as mlayer_long
 
 
 _MLAYER_BACKENDS: Dict[
@@ -16,6 +17,7 @@ _MLAYER_BACKENDS: Dict[
 ] = {
     "permanental": mlayer_permanental,
     "permanental_alt": mlayer_alternative,
+    "long_cycle": mlayer_long,
     # ``mlayer2`` is kept as an alias for backwards compatibility.
     "mlayer2": mlayer_permanental,
 }
